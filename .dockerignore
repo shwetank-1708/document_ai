@@ -1,0 +1,7 @@
+venv
+__pycache__
+.git
+data/training
+data/test
+.DS_Store
+*.pyc

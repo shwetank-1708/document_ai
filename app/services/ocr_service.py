@@ -5,12 +5,31 @@ from PIL import Image
 import numpy as np
 from paddleocr import PaddleOCR
 
-ocr_engine = PaddleOCR(use_angle_cls=True, lang="en")
+ocr_engine = PaddleOCR(
+    text_detection_model_name="PP-OCRv5_mobile_det",
+    text_recognition_model_name="en_PP-OCRv5_mobile_rec",
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=False,
+)
+
+
+def resize_for_ocr(image: Image.Image, max_side: int = 1600) -> Image.Image:
+    width, height = image.size
+    largest_side = max(width, height)
+
+    if largest_side <= max_side:
+        return image
+
+    scale = max_side / largest_side
+    new_size = (int(width * scale), int(height * scale))
+    return image.resize(new_size, Image.Resampling.LANCZOS)
 
 def extract_text_from_image(image_path: str) -> str:
     # Load image and convert to RGB for better OCR quality
     try:
         image = Image.open(image_path).convert("RGB")
+        image = resize_for_ocr(image)
         image_np = np.array(image)
     except Exception:
         # Fallback to direct path if image loading fails

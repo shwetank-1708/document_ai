@@ -17,10 +17,14 @@ ENV/
 
 # Data
 data/uploads/
+data/training/
+data/test/
+data/ocr_dataset.csv
 data/*.pdf
 data/*.png
 data/*.jpg
 data/*.jpeg
+document_ai.db
 
 # Model files
 app/models/

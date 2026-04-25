@@ -1,154 +1,253 @@
 # Document AI System
 
-An OCR-based Intelligent Document Processing System built with FastAPI and PaddleOCR.
+Document AI is an OCR-based intelligent document processing system for invoices, resumes, and forms. It accepts PDF/image uploads, extracts text with PaddleOCR, classifies the document, extracts key fields, stores the result in SQLite, and provides a Streamlit dashboard for review and feedback.
 
-## 🎯 Features
+## Project Overview
 
-- **PDF/Image Upload**: Support for PNG, JPG, JPEG, WEBP, and PDF files
-- **Intelligent OCR**: Uses PaddleOCR for accurate text extraction
-- **Multi-page PDF Support**: Automatically converts PDF pages to images for processing
-- **Document Classification**: TF-IDF based classifier to identify document types (Invoice, Resume, Form)
-- **REST API**: FastAPI-based endpoint for easy integration
-- **Swagger UI**: Built-in interactive API documentation
+This project demonstrates an end-to-end document AI workflow:
 
-## 🛠️ Tech Stack
+- Upload PDF/image documents through FastAPI
+- Extract text using PaddleOCR
+- Classify document type with TF-IDF + Logistic Regression
+- Extract useful fields with rule-based logic
+- Store processed documents and extracted fields in SQLite
+- Capture user feedback for future retraining
+- Review documents and submit corrections from a Streamlit dashboard
 
-- **Backend Framework**: FastAPI
-- **OCR Engine**: PaddleOCR
-- **PDF Processing**: PyMuPDF
-- **ML Classification**: Scikit-learn (TF-IDF + Logistic Regression)
-- **Image Processing**: PIL, NumPy, OpenCV
-- **API Server**: Uvicorn
+## Architecture
 
-## 📋 Project Structure
-
-```
-document_ai/
-├── app/
-│   ├── main.py                 # FastAPI application
-│   ├── routes/
-│   │   └── document.py         # Document upload & processing routes
-│   ├── services/
-│   │   ├── ocr_service.py      # OCR extraction logic
-│   │   └── classifier_service.py # Document classification
-│   ├── core/
-│   │   └── utils.py            # Utility functions
-│   └── models/                 # Trained models (auto-generated)
-├── data/
-│   └── uploads/                # Uploaded documents (auto-created)
-├── requirements.txt            # Python dependencies
-└── README.md                   # This file
+```text
+Upload
+  -> OCR
+  -> Classification
+  -> Field Extraction
+  -> SQLite Database
+  -> FastAPI Response
+  -> Streamlit Dashboard
+  -> Feedback Storage
 ```
 
-## 🚀 Getting Started
+Core components:
 
-### Prerequisites
+- `app/services/ocr_service.py`: OCR extraction for images and PDFs
+- `app/services/classifier_service.py`: document type prediction
+- `app/services/extraction_service.py`: invoice/resume/form field extraction
+- `database/`: SQLAlchemy models, session setup, and CRUD helpers
+- `dashboard/streamlit_app.py`: review and feedback UI
+- `ml/`: dataset building and classifier training scripts
 
-- Python 3.8+
-- pip
-- Virtual environment (recommended)
+## Tech Stack
 
-### Installation
+- FastAPI
+- Streamlit
+- PaddleOCR
+- PyMuPDF
+- Scikit-learn
+- SQLAlchemy
+- SQLite
+- Docker Compose
 
-1. **Clone the repository**
-```bash
-git clone https://github.com/shwetank-1708/document_ai.git
-cd document_ai
-```
+## Local Setup
 
-2. **Create virtual environment**
 ```bash
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-3. **Install dependencies**
-```bash
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### Running the Server
+Run the FastAPI API:
 
 ```bash
-source venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-The API will be available at: `http://127.0.0.1:8000`
+Run the Streamlit dashboard:
 
-### Testing with Swagger UI
+```bash
+streamlit run dashboard/streamlit_app.py
+```
 
-1. Open: `http://127.0.0.1:8000/docs`
-2. Click on **POST /documents/upload**
-3. Upload a document (PNG, JPG, PDF, etc.)
-4. Check the response with extracted text and document type
+Local URLs:
 
-## 📝 API Endpoints
+- FastAPI docs: `http://127.0.0.1:8000/docs`
+- Streamlit dashboard: `http://127.0.0.1:8501`
 
-### POST /documents/upload
+## Docker Usage
 
-Upload a document and extract text with classification.
+Make sure Docker is running, then start both services:
 
-**Request:**
-- File: Binary image or PDF file
+```bash
+docker compose up --build
+```
 
-**Response:**
+Docker URLs:
+
+- FastAPI docs: `http://localhost:8000/docs`
+- Streamlit dashboard: `http://localhost:8501`
+
+Docker Compose mounts persistent local data:
+
+- `./data/uploads:/app/data/uploads`
+- `./document_ai.db:/app/document_ai.db`
+
+Stop the containers:
+
+```bash
+docker compose down
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/health` | Health check |
+| `POST` | `/process-document` | Upload, OCR, classify, extract fields, save to DB |
+| `POST` | `/documents/upload` | Same processing flow with saved filename/path metadata |
+| `GET` | `/documents` | List processed documents |
+| `GET` | `/documents/{document_id}` | Get one processed document with extracted fields |
+| `POST` | `/feedback` | Save corrected classification or field feedback |
+| `GET` | `/feedback` | List all feedback records |
+| `GET` | `/feedback/{document_id}` | List feedback for one document |
+
+## Example Responses
+
+### `POST /process-document`
+
 ```json
 {
-  "filename": "invoice.pdf",
-  "saved_as": "c3d9f8f402d54f5b8c1f3e4e8f90abcd.pdf",
-  "file_path": "data/uploads/c3d9f8f402d54f5b8c1f3e4e8f90abcd.pdf",
-  "extracted_text": "INVOICE\nInvoice No: INV-2026-0422\n...",
-  "document_type": "invoice"
+  "document_id": 3,
+  "filename": "invoice_01.pdf",
+  "document_type": "invoice",
+  "confidence": 0.91,
+  "extracted_fields": {
+    "invoice_number": "INV-1001",
+    "invoice_date": "2026-04-23",
+    "total_amount": "4500",
+    "vendor_name": "Acme Services"
+  },
+  "extracted_text": "Tax Invoice\nInvoice No: INV-1001\n...",
+  "processing_time": "1.25 seconds"
 }
 ```
 
-## 🔧 Configuration
+When the classifier confidence is low, the response includes:
 
-No configuration needed for basic usage. The system auto-creates:
-- `data/uploads/` - Uploaded files directory
-- `app/models/` - Trained ML models
+```json
+{
+  "warning": "Low confidence prediction"
+}
+```
 
-## 📚 Current Phase
+### `GET /documents`
 
-**Phase 1: OCR Pipeline** ✅
-- FastAPI setup
-- File upload endpoint
-- OCR text extraction (PaddleOCR)
-- Basic document classification
-- API response with extracted text
+```json
+[
+  {
+    "document_id": 3,
+    "filename": "invoice_01.pdf",
+    "saved_path": "data/uploads/abc123.pdf",
+    "document_type": "invoice",
+    "confidence": 0.91,
+    "extracted_fields": {
+      "invoice_number": "INV-1001",
+      "total_amount": "4500"
+    },
+    "created_at": "2026-04-25T10:30:00"
+  }
+]
+```
 
-**Upcoming:**
-- Phase 2: Enhanced preprocessing and better classifier
-- Phase 3: Field extraction (invoice numbers, dates, amounts)
-- Phase 4: Database integration
-- Phase 5: Web UI dashboard
+### `POST /feedback`
 
-## 🤝 Contributing
+Request:
 
-This is a learning/development project. Feel free to extend it!
+```json
+{
+  "document_id": 3,
+  "corrected_document_type": "invoice",
+  "corrected_fields": {
+    "invoice_number": "INV-1001",
+    "total_amount": "4500"
+  },
+  "user_notes": "Corrected invoice amount"
+}
+```
 
-Potential improvements:
-- Improve training dataset for classification
-- Add field extraction logic
-- Implement database storage
-- Add web interface
-- Performance optimization
-- Error handling improvements
+Response:
 
-## 📄 License
+```json
+{
+  "message": "Feedback saved successfully",
+  "feedback_id": 1
+}
+```
 
-MIT
+### `GET /feedback`
 
-## 👤 Author
+```json
+[
+  {
+    "feedback_id": 1,
+    "document_id": 3,
+    "corrected_document_type": "invoice",
+    "corrected_fields": {
+      "invoice_number": "INV-1001",
+      "total_amount": "4500"
+    },
+    "user_notes": "Corrected invoice amount",
+    "created_at": "2026-04-25T10:35:00"
+  }
+]
+```
 
-Shwetank Chauhan
+## Training Workflow
 
-## 📧 Contact
+Build the OCR dataset:
 
-For questions or suggestions, reach out via GitHub issues.
+```bash
+python ml/build_dataset.py
+```
 
----
+Retrain the classifier:
 
-**Last Updated**: April 23, 2026
-**Status**: Active Development (Phase 1 Complete)
+```bash
+python ml/train_classifier.py
+```
+
+Keep unseen files under:
+
+- `data/test/invoice/`
+- `data/test/resume/`
+- `data/test/form/`
+
+## Reliability Features
+
+- Per-step logging for upload, OCR, classification, extraction, and database save
+- Request processing time in document processing responses
+- Clear HTTP errors for unsupported files and empty OCR output
+- Low-confidence warning when prediction confidence is below `0.60`
+- `/health` endpoint for deployment checks
+
+## Configuration
+
+Default database:
+
+```text
+sqlite:///./document_ai.db
+```
+
+Override with:
+
+```bash
+DATABASE_URL=<your_database_url>
+```
+
+The Streamlit dashboard reads the API URL from:
+
+```bash
+API_BASE_URL=http://127.0.0.1:8000
+```
+
+## Status
+
+Current phase: production polish complete.

@@ -9,3 +9,6 @@ numpy
 pymupdf
 scikit-learn
 joblib
+sqlalchemy
+streamlit
+requests

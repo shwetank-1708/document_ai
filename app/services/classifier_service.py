@@ -1,10 +1,18 @@
 import re
+import csv
 import joblib
+from pathlib import Path
+from typing import List, Tuple
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-import os
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+
+MODEL_DIR = Path("app/models")
+VECTORIZER_PATH = MODEL_DIR / "tfidf_vectorizer.pkl"
+CLASSIFIER_PATH = MODEL_DIR / "document_classifier.pkl"
+DATASET_PATH = Path("data/ocr_dataset.csv")
+RANDOM_STATE = 42
 
 # Text preprocessing function
 def preprocess_text(text: str) -> str:
@@ -17,7 +25,6 @@ def preprocess_text(text: str) -> str:
     text = ' '.join(text.split())
     return text
 
-# Sample training data (in a real scenario, this would be from actual documents)
 invoice_texts = [
     "invoice number 12345 date march 15 2023 total amount 250000 customer john doe",
     "bill of sale invoice 67890 payment due april 30 2023 amount due 150000",
@@ -57,48 +64,160 @@ form_texts = [
     "enrollment form course selection student details payment information"
 ]
 
-# Prepare training data
-X = invoice_texts + resume_texts + form_texts
-y = ['invoice'] * len(invoice_texts) + ['resume'] * len(resume_texts) + ['form'] * len(form_texts)
+TRAINING_DATA = {
+    "invoice": invoice_texts,
+    "resume": resume_texts,
+    "form": form_texts,
+}
 
-# Preprocess all texts
-X_processed = [preprocess_text(text) for text in X]
 
-# Train the model
-vectorizer = TfidfVectorizer(max_features=1000, ngram_range=(1, 2))
-X_vectorized = vectorizer.fit_transform(X_processed)
+def load_ocr_dataset() -> Tuple[List[str], List[str]]:
+    texts = []
+    labels = []
 
-X_train, X_test, y_train, y_test = train_test_split(X_vectorized, y, test_size=0.2, random_state=42)
+    if not DATASET_PATH.exists():
+        return texts, labels
 
-classifier = LogisticRegression(random_state=42, max_iter=1000)
-classifier.fit(X_train, y_train)
+    with DATASET_PATH.open(newline="", encoding="utf-8") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            text = (row.get("text") or "").strip()
+            label = (row.get("label") or "").strip()
+            if text and label:
+                texts.append(text)
+                labels.append(label)
 
-# Evaluate
-y_pred = classifier.predict(X_test)
-accuracy = accuracy_score(y_test, y_pred)
-print(f"Model accuracy: {accuracy:.2f}")
+    return texts, labels
 
-# Save the model and vectorizer
-model_dir = "app/models"
-os.makedirs(model_dir, exist_ok=True)
-joblib.dump(vectorizer, os.path.join(model_dir, 'tfidf_vectorizer.pkl'))
-joblib.dump(classifier, os.path.join(model_dir, 'document_classifier.pkl'))
 
-print("Model trained and saved successfully!")
+def get_dataset_summary() -> dict:
+    _, labels = load_ocr_dataset()
+    if labels:
+        return {
+            document_type: labels.count(document_type)
+            for document_type in sorted(set(labels))
+        }
 
-# Classification function
-def classify_document(text: str) -> str:
-    # Load model and vectorizer
-    vectorizer = joblib.load('app/models/tfidf_vectorizer.pkl')
-    classifier = joblib.load('app/models/document_classifier.pkl')
-    
+    return {
+        document_type: len(samples)
+        for document_type, samples in TRAINING_DATA.items()
+    }
+
+
+def get_training_examples() -> Tuple[List[str], List[str]]:
+    dataset_texts, dataset_labels = load_ocr_dataset()
+    if dataset_texts:
+        return dataset_texts, dataset_labels
+
+    texts = []
+    labels = []
+
+    for document_type, samples in TRAINING_DATA.items():
+        texts.extend(samples)
+        labels.extend([document_type] * len(samples))
+
+    return texts, labels
+
+
+def evaluate_model(texts, labels, model, vectorizer) -> Tuple[float, dict]:
+    processed_texts = [preprocess_text(text) for text in texts]
+    X = vectorizer.transform(processed_texts)
+    y_pred = model.predict(X)
+
+    accuracy = accuracy_score(labels, y_pred)
+    report = classification_report(
+        labels,
+        y_pred,
+        output_dict=True,
+        zero_division=0,
+    )
+
+    return accuracy, report
+
+
+def train_classifier() -> dict:
+    X, y = get_training_examples()
+    X_processed = [preprocess_text(text) for text in X]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X_processed,
+        y,
+        test_size=0.2,
+        random_state=RANDOM_STATE,
+        stratify=y,
+    )
+
+    vectorizer = TfidfVectorizer(max_features=1000, ngram_range=(1, 2))
+    X_train_vectorized = vectorizer.fit_transform(X_train)
+    X_test_vectorized = vectorizer.transform(X_test)
+
+    classifier = LogisticRegression(random_state=RANDOM_STATE, max_iter=1000)
+    classifier.fit(X_train_vectorized, y_train)
+
+    y_pred = classifier.predict(X_test_vectorized)
+    accuracy, report = evaluate_model(X_test, y_test, classifier, vectorizer)
+    labels_order = sorted(set(y))
+
+    MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    joblib.dump(vectorizer, VECTORIZER_PATH)
+    joblib.dump(classifier, CLASSIFIER_PATH)
+
+    return {
+        "dataset_size_per_class": get_dataset_summary(),
+        "total_samples": len(X),
+        "train_samples": len(X_train),
+        "test_samples": len(X_test),
+        "accuracy": round(accuracy, 3),
+        "classification_report": report,
+        "classification_report_text": classification_report(
+            y_test,
+            y_pred,
+            labels=labels_order,
+            zero_division=0,
+        ),
+        "confusion_matrix": {
+            "labels": labels_order,
+            "matrix": confusion_matrix(y_test, y_pred, labels=labels_order).tolist(),
+        },
+    }
+
+
+def ensure_model_files() -> None:
+    if not VECTORIZER_PATH.exists() or not CLASSIFIER_PATH.exists():
+        train_classifier()
+
+
+def evaluate_classifier() -> dict:
+    return train_classifier()
+
+
+def load_classifier() -> Tuple[TfidfVectorizer, LogisticRegression]:
+    ensure_model_files()
+    vectorizer = joblib.load(VECTORIZER_PATH)
+    classifier = joblib.load(CLASSIFIER_PATH)
+    return vectorizer, classifier
+
+
+def predict_with_confidence(text: str, model, vectorizer) -> Tuple[str, float]:
     # Preprocess input text
     processed_text = preprocess_text(text)
-    
+
     # Vectorize
     text_vectorized = vectorizer.transform([processed_text])
-    
-    # Predict
-    prediction = classifier.predict(text_vectorized)[0]
-    
-    return prediction
+
+    probabilities = model.predict_proba(text_vectorized)[0]
+    prediction = model.classes_[probabilities.argmax()]
+    confidence = probabilities.max()
+
+    return str(prediction), float(confidence)
+
+
+# Classification function with confidence
+def classify_document(text: str) -> dict:
+    vectorizer, classifier = load_classifier()
+    prediction, confidence = predict_with_confidence(text, classifier, vectorizer)
+
+    return {
+        "document_type": prediction,
+        "confidence": round(float(confidence), 3)
+    }
