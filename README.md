@@ -96,6 +96,33 @@ Stop the containers:
 docker compose down
 ```
 
+## Render Deployment
+
+This project is ready for Render Blueprint deployment through GitHub integration. Render does not use `docker-compose.yml` directly, so [render.yaml](render.yaml) defines two separate web services:
+
+- `document-ai-api`: FastAPI backend using `Dockerfile`
+- `document-ai-dashboard`: Streamlit dashboard using `Dockerfile.dashboard`
+
+Deploy from Render:
+
+1. Push the latest code to GitHub.
+2. In Render, create a new Blueprint.
+3. Select this repository.
+4. Render will create the API and dashboard services from `render.yaml`.
+5. After the API service is created, copy its live URL.
+6. Update the dashboard service environment variable:
+
+```text
+API_BASE_URL=https://your-live-api-service.onrender.com
+```
+
+Render URLs will look like:
+
+- FastAPI docs: `https://your-api-service.onrender.com/docs`
+- Streamlit dashboard: `https://your-dashboard-service.onrender.com`
+
+The dashboard must point to the live FastAPI service URL through `API_BASE_URL`; otherwise it will not be able to load documents or submit feedback.
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -245,8 +272,10 @@ DATABASE_URL=<your_database_url>
 The Streamlit dashboard reads the API URL from:
 
 ```bash
-API_BASE_URL=http://127.0.0.1:8000
+API_BASE_URL=https://your-api-service-url.onrender.com
 ```
+
+For local Docker Compose, this is already set to `http://api:8000` in `docker-compose.yml`. For local non-Docker development, enter `http://127.0.0.1:8000` in the dashboard sidebar.
 
 ## Status
 

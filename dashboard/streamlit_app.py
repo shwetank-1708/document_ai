@@ -6,7 +6,10 @@ import requests
 import streamlit as st
 
 
-DEFAULT_API_BASE_URL = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
+DEFAULT_API_BASE_URL = os.getenv(
+    "API_BASE_URL",
+    "https://your-api-service-url.onrender.com",
+)
 
 
 st.set_page_config(
